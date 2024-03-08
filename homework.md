@@ -75,6 +75,31 @@ Options:
 
 p.s. The trip time between taxi zones does not take symmetricity into account, i.e. `A -> B` and `B -> A` are considered different trips. This applies to subsequent questions as well.
 
+```sql
+CREATE MATERIALIZED VIEW agg_trip_time AS    
+    SELECT 
+    pickup_zone.Zone as pickup_taxi_zone, 
+    dropoff_zone.Zone as dropoff_taxi_zone,
+    AVG(tpep_dropoff_datetime - tpep_pickup_datetime) as avg_trip_time,
+    MIN(tpep_dropoff_datetime - tpep_pickup_datetime) as min_trip_time,
+    MAX(tpep_dropoff_datetime - tpep_pickup_datetime) as max_trip_time
+    FROM trip_data
+    JOIN taxi_zone as pickup_zone
+        ON trip_data.PULocationID = pickup_zone.location_id
+    JOIN taxi_zone as dropoff_zone
+        ON trip_data.DOLocationID = dropoff_zone.location_id
+    GROUP BY pickup_zone.Zone, dropoff_zone.Zone;
+```
+```sql
+WITH max_avg_trip_time AS (
+    SELECT MAX(avg_trip_time) as max_avg
+    FROM agg_trip_time
+)
+SELECT pickup_taxi_zone, dropoff_taxi_zone, avg_trip_time
+FROM agg_trip_time, max_avg_trip_time
+WHERE agg_trip_time.avg_trip_time >= max_avg_trip_time.max_avg;
+```
+
 ## Question 2
 
 Recreate the MV(s) in question 1, to also find the **number of trips** for the pair of taxi zones with the highest average trip time.
@@ -84,6 +109,35 @@ Options:
 2. 3
 3. 10
 4. 1
+
+```sql
+DROP MATERIALIZED VIEW agg_trip_time;
+
+CREATE MATERIALIZED VIEW agg_trip_time AS    
+    SELECT 
+    pickup_zone.Zone as pickup_taxi_zone, 
+    dropoff_zone.Zone as dropoff_taxi_zone,
+    AVG(tpep_dropoff_datetime - tpep_pickup_datetime) as avg_trip_time,
+    MIN(tpep_dropoff_datetime - tpep_pickup_datetime) as min_trip_time,
+    MAX(tpep_dropoff_datetime - tpep_pickup_datetime) as max_trip_time,
+    COUNT(1) as number_trips
+    FROM trip_data
+    JOIN taxi_zone as pickup_zone
+        ON trip_data.PULocationID = pickup_zone.location_id
+    JOIN taxi_zone as dropoff_zone
+        ON trip_data.DOLocationID = dropoff_zone.location_id
+    GROUP BY pickup_zone.Zone, dropoff_zone.Zone;
+```
+
+```sql
+WITH max_avg_trip_time AS (
+    SELECT MAX(avg_trip_time) as max_avg
+    FROM agg_trip_time
+)
+SELECT pickup_taxi_zone, dropoff_taxi_zone, avg_trip_time, number_trips
+FROM agg_trip_time, max_avg_trip_time
+WHERE agg_trip_time.avg_trip_time >= max_avg_trip_time.max_avg;
+```
 
 ## Question 3
 
@@ -101,3 +155,24 @@ Options:
 2. LaGuardia Airport, Lincoln Square East, JFK Airport
 3. Midtown Center, Upper East Side South, Upper East Side North
 4. LaGuardia Airport, Midtown Center, Upper East Side North
+
+```sql
+CREATE MATERIALIZED VIEW busiest_zones_17_hrs AS 
+WITH t AS (
+        SELECT MAX(tpep_pickup_datetime) AS latest_pickup_time
+        FROM trip_data
+    )
+SELECT
+    taxi_zone.Zone AS pickup_zone,
+    count(*) AS last_17_hrs_pickup_cnt
+FROM t,
+    trip_data
+        JOIN taxi_zone
+            ON trip_data.PULocationID = taxi_zone.location_id
+WHERE
+    trip_data.tpep_pickup_datetime > (t.latest_pickup_time - INTERVAL '17' HOUR)
+GROUP BY
+    taxi_zone.Zone
+ORDER BY last_17_hrs_pickup_cnt DESC
+    LIMIT 3;
+```
